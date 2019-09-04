@@ -12,6 +12,7 @@ import math
 import pickle
 
 import os
+<<<<<<< HEAD
 cwd = os.path.dirname(__file__) # get current location of script
 package_path = ''.join(cwd.split('Chemidr')[:-1]) + 'Chemidr'
 
@@ -21,6 +22,17 @@ def make_fp(fp):
     return f'{package_path}/{fp}'
 
 # Convert text to greet letter using *~greek letter name~*
+=======
+cwd = os.path.dirname(__file__)
+package_path = ''.join(cwd.split('Chemidr')[:-1]) + 'Chemidr'
+
+
+# Make filepath
+def make_fp(fp):
+    return f'{package_path}/{fp}'
+
+# Problem inputing letters into csv, so created system to convert them here
+>>>>>>> fbc9ca5a8c2a70553e0c6f4b8bb5b75d06f46882
 def greek_letter_converter(chem, convert_letter = True):
     if convert_letter:
         chem = chem.replace('*alpha*', 'α')
@@ -202,14 +214,24 @@ def append_pubchem_id(df, chem_key):
 
     i = 0
     for idx, row in df.iterrows():
+<<<<<<< HEAD
         try:
+=======
+        # try:
+>>>>>>> fbc9ca5a8c2a70553e0c6f4b8bb5b75d06f46882
         ID, name = get_compound_pubchem_info(row[chem_key])
         df.at[idx, 'pubchem_id'] = ID
         df.at[idx, 'pubchem_name'] = name
             
+<<<<<<< HEAD
         except:
             # print(row[chem_key])
             pass
+=======
+        # except:
+            # print(row[chem_key])
+            # pass
+>>>>>>> fbc9ca5a8c2a70553e0c6f4b8bb5b75d06f46882
         
         if not i % 20:
             print(idx, 'chems searched in', (time() - start) / 60, "min")
@@ -230,6 +252,7 @@ def id_searcher(df, chem_key, fdb = True, pubchem = True):
     
     total = len(df[chem_key].drop_duplicates())
     
+<<<<<<< HEAD
     # num_covered = len(df[df.pubchem_id.notnull()].pubchem_id.drop_duplicates())
     # print('Pubchem unique compound coverage', num_covered / total, '%')
     
@@ -237,6 +260,15 @@ def id_searcher(df, chem_key, fdb = True, pubchem = True):
     # print('FooDB unique compound coverage', num_covered / total, '%')
     
     # Manually looked up the maximum pubchem index to make sure id's don't overlap
+=======
+    num_covered = len(df[df.pubchem_id.notnull()].pubchem_id.drop_duplicates())
+    print('Pubchem unique compound coverage', num_covered / total, '%')
+    
+    num_covered = len(df[df.foodb_id.notnull()].foodb_id.drop_duplicates())
+    print('FooDB unique compound coverage', num_covered / total, '%')
+    
+    # The maximum pubchem index to make sure id's don't overlap
+>>>>>>> fbc9ca5a8c2a70553e0c6f4b8bb5b75d06f46882
     max_p_index = 134825000
     
     for idx, row in df.iterrows():
@@ -245,8 +277,13 @@ def id_searcher(df, chem_key, fdb = True, pubchem = True):
         else:
             df.at[idx, 'chem_id'] = row['foodb_id'] + max_p_index
     
+<<<<<<< HEAD
     # num_covered = len(df[df.chem_id.notnull()].chem_id.drop_duplicates())
     # print('Total unique compound covereage', num_covered / total, '%')
+=======
+    num_covered = len(df[df.chem_id.notnull()].chem_id.drop_duplicates())
+    print('Total unique compound covereage', num_covered / total, '%')
+>>>>>>> fbc9ca5a8c2a70553e0c6f4b8bb5b75d06f46882
 
     # file = 'intermediate_save/' + file
     # df.to_pickle(file)
