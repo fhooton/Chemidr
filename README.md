@@ -1,1 +1,1 @@
-# chemidr
+# Project to match chemicals with chemical id's in popular databases
