@@ -23,7 +23,7 @@ import pickle
 
 import os
 cwd = os.path.dirname(__file__) # get current location of script
-package_path = ''.join(cwd.split('Chemidr')[:-1]) + 'Chemidr'
+package_path = 'Chemidr'.join(cwd.split('Chemidr')[:-1]) + 'Chemidr' # get path to head of Chemidr package
 
 
 # Filepath wrapper to make data load-able from Chemidr
@@ -127,14 +127,14 @@ def get_compound_pubchem_info(chem):
 
 
 # Evaluates if a cell already contains a key. If not, and if there is a match, insert a key
-def __check_key__(val, input_dict):
-    if val is np.nan:
-        if val in input_dict:
-            input_dict[val]
+def __check_key__(row, id_col, str_col, input_dict):
+    if np.isnan(row[id_col]):
+        if row[str_col] in input_dict:
+            return input_dict[row[str_col]]
         else:
             return np.nan
     else:
-        return val
+        return row[id_col]
     
 
 def append_foodb_id(df, chem_key, load_ids=True):
@@ -175,14 +175,14 @@ def append_foodb_id(df, chem_key, load_ids=True):
         # Only keep columns with synonym and synonym id
         syn_reduced = compound_synonyms[['source_id', 'synonym']]
         syn_reduced = syn_reduced.rename(index=str, columns={"source_id": "foodb_id"})
-        syn_reduced.synonym = syn_reduced.synonym.str.lower()
+        syn_reduced.synonym = syn_reduced.synonym.str.strip().str.lower()
     
         input_dict = {row['synonym'] : row['foodb_id'] for _, row in syn_reduced.iterrows()}
         
         with open(__make_fp__('intermediate_save/fdb_synonyms.pkl'), 'wb') as f:
             pickle.dump(input_dict, f)
 
-    df.foodb_id = df.foodb_id.apply(__check_key__, input_dict=input_dict)
+    df.foodb_id = df.apply(__check_key__, id_col='foodb_id', str_col=chem_key, input_dict=input_dict, axis=1)
     
     if load_ids:
         with open(__make_fp__('intermediate_save/fdb_source_strings.pkl'), 'rb') as f:
@@ -203,7 +203,7 @@ def append_foodb_id(df, chem_key, load_ids=True):
         with open(__make_fp__('intermediate_save/fdb_source_strings.pkl'), 'wb') as f:
             pickle.dump(input_dict, f)
     
-    df.foodb_id = df.foodb_id.apply(__check_key__, input_dict=input_dict)
+    df.foodb_id = df.apply(__check_key__, id_col='foodb_id', str_col=chem_key, input_dict=input_dict, axis=1)
     
     if load_ids:
         with open(__make_fp__('intermediate_save/usda_ids.pkl'), 'rb') as f:
@@ -216,7 +216,7 @@ def append_foodb_id(df, chem_key, load_ids=True):
         with open(__make_fp__('intermediate_save/usda_ids.pkl'), 'wb') as f:
             pickle.dump(input_dict, f)
     
-    df.foodb_id = df.foodb_id.apply(__check_key__, input_dict=input_dict)
+    df.foodb_id = df.apply(__check_key__, id_col='foodb_id', str_col=chem_key, input_dict=input_dict, axis=1)
                 
     return df
 
