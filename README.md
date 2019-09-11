@@ -6,4 +6,4 @@ Primary Functions
 * Get similarity between chemicals
 * Get embedding vectors using Mol2Vec (or some embedding variant)
 
-Based on https://github.com/pybind/python_example
+~Based on https://github.com/pybind/python_example~
