@@ -9,7 +9,7 @@ def inchikeys_from_cids(cids, as_dict=False):
         Input
         ----------------------------------------------------------------
         cids : list
-            list of pubchem cid's for InChIKeys (needs to be ints)
+            list of pubchem cid's for InChIKeys (needs to be ints, but also included int typecast)
 
         Returns
         ----------------------------------------------------------------
@@ -17,7 +17,7 @@ def inchikeys_from_cids(cids, as_dict=False):
             dictionary with CID's as keys and InChIKeys as values if as_dict is True, otherwise list
             of InChIKeys to preserve order
     """
-	cids = [str(i) for i in cids]
+	cids = [str(int(i)) for i in cids]
 
 	# Create url for InChIKey query
 	url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{','.join(cids)}/property/InChIKey/JSON"
