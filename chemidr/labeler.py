@@ -18,6 +18,7 @@ import numpy as np
 from time import time
 import urllib.request as request
 from lxml import etree
+import json
 import math
 import pickle
 
@@ -83,9 +84,10 @@ def __clean_term__(term, convert_letter = True, w_space = True, is_url=True):
     return term
 
 
-def __retrieve_info__(req):
+def __exact_retrevial__(req):
     """
-        retrieves pubchem synonym information and extracts the compound id and primary compound name
+        retrieves pubchem synonym information using exact string matches and extracts the 
+        compound id and primary compound name
 
         Input
         ----------------------------------------------------------------
@@ -113,15 +115,69 @@ def __retrieve_info__(req):
     return compound_id, compound_name
 
 
-# try-request wrapper to retrieve pubchem info
+# Examples https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pccompound&term=allicin&retmode=json
+# https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/2244/synonyms/json
+def __compound_search__(req):
+    """
+        Searchs PubChem database with search term (req) to retrieve information for in-exact matches
+
+        Input
+        ----------------------------------------------------------------
+        req : str
+            chemical string to query in pubmed
+
+        Returns
+        ----------------------------------------------------------------
+        cid : float
+            pubchem compound id of req chemical
+        name : str
+            compound name of primary compound for synonym entry
+    """
+    # Url to search for compound
+    url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pccompound&term={req}&retmode=json"
+
+    with request.urlopen(url) as response:
+        r = response.read()
+
+    # Return np.nan for no search results
+    if int(json.loads(r)['esearchresult']['count']) == 0:
+        return np.nan, req
+
+    cid = json.loads(r)['esearchresult']['idlist'][0]
+
+    # Url to get the name associated with a cid
+    name_url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cid}/synonyms/json"
+    name = json.loads(request.urlopen(name_url).read())['InformationList']['Information'][0]['Synonym'][0]
+
+    # Return the cid and name if the search retrieves 1 result
+    if int(json.loads(r)['esearchresult']['count']) == 1:
+        return cid, name
+
+    # Returns cid and name if the strings (first result, req) match is >= 98
+    elif int(json.loads(r)['esearchresult']['count']) > 1:
+        s1 = name.replace('(', '').replace(')', '').lower()
+        s2 = req.replace('(', '').replace(')', '').lower()
+
+        # Calculates fuzz ratio (Levenshtein Distance)
+        if fuzz.ratio >= 98:
+            return cid, name
+        else:
+            return np.nan, req
+
+
+# try-except wrapper to retrieve pubchem info
 def get_compound_pubchem_info(chem):
     
     try:
         req = __clean_term__(chem, convert_letter=False)
-        compound_id, compound_name = __retrieve_info__(req)
+        compound_id, compound_name = __exact_retrevial__(req)
     except:
-        req = __clean_term__(chem, convert_letter=False, w_space=False)
-        compound_id, compound_name = __retrieve_info__(req)
+        try:
+            req = __clean_term__(chem, convert_letter=False, w_space=False)
+            compound_id, compound_name = __exact_retrevial__(req)
+        except:
+            req = __clean_term__(chem, convert_letter=False)
+            compound_id, compound_name = __compound_search__(req)
     
     return compound_id, compound_name.lower()
 
@@ -165,24 +221,24 @@ def append_foodb_id(df, chem_key, load_ids=True):
     # Merge on matching names
     df = df.merge(fdb_compounds, how = 'left', left_on = chem_key, right_on = 'name')
     
-    if load_ids:
-        with open(__make_fp__('intermediate_save/fdb_synonyms.pkl'), 'rb') as f:
-            input_dict = pickle.load(f)
-    else:
-        # Need to ensure document is in folder
-        compound_synonyms = pd.read_csv(__make_fp__('data/compound_synonymssql.csv'))
+    # if load_ids:
+    #     with open(__make_fp__('intermediate_save/fdb_synonyms.pkl'), 'rb') as f:
+    #         input_dict = pickle.load(f)
+    # else:
+    #     # Need to ensure document is in folder
+    #     compound_synonyms = pd.read_csv(__make_fp__('data/compound_synonymssql.csv'))
 
-        # Only keep columns with synonym and synonym id
-        syn_reduced = compound_synonyms[['source_id', 'synonym']]
-        syn_reduced = syn_reduced.rename(index=str, columns={"source_id": "foodb_id"})
-        syn_reduced.synonym = syn_reduced.synonym.str.strip().str.lower()
+    #     # Only keep columns with synonym and synonym id
+    #     syn_reduced = compound_synonyms[['source_id', 'synonym']]
+    #     syn_reduced = syn_reduced.rename(index=str, columns={"source_id": "foodb_id"})
+    #     syn_reduced.synonym = syn_reduced.synonym.str.strip().str.lower()
     
-        input_dict = {row['synonym'] : row['foodb_id'] for _, row in syn_reduced.iterrows()}
+    #     input_dict = {row['synonym'] : row['foodb_id'] for _, row in syn_reduced.iterrows()}
         
-        with open(__make_fp__('intermediate_save/fdb_synonyms.pkl'), 'wb') as f:
-            pickle.dump(input_dict, f)
+    #     with open(__make_fp__('intermediate_save/fdb_synonyms.pkl'), 'wb') as f:
+    #         pickle.dump(input_dict, f)
 
-    df.foodb_id = df.apply(__check_key__, id_col='foodb_id', str_col=chem_key, input_dict=input_dict, axis=1)
+    # df.foodb_id = df.apply(__check_key__, id_col='foodb_id', str_col=chem_key, input_dict=input_dict, axis=1)
     
     if load_ids:
         with open(__make_fp__('intermediate_save/fdb_source_strings.pkl'), 'rb') as f:
@@ -251,7 +307,7 @@ def append_pubchem_id(df, chem_key):
             # print(row[chem_key])
             pass
         
-        if not i % 20:
+        if not i % 1000:
             print(idx, 'chems searched in', (time() - start) / 60, "min")
 
         i += 1
@@ -283,8 +339,10 @@ def id_searcher(df, chem_key, fdb = True, pubchem = True):
     """
     if pubchem:
         df = append_pubchem_id(df, chem_key)
+        print(len(df))
     if fdb:
         df = append_foodb_id(df, chem_key)
+        print(len(df))
     
     total = len(df[chem_key].drop_duplicates())
     
@@ -303,6 +361,7 @@ def id_searcher(df, chem_key, fdb = True, pubchem = True):
             df.at[idx, 'chem_id'] = row['pubchem_id']
         else:
             df.at[idx, 'chem_id'] = row['foodb_id'] + max_p_index
+    print(len(df))
     
     # num_covered = len(df[df.chem_id.notnull()].chem_id.drop_duplicates())
     # print('Total unique compound covereage', num_covered / total, '%')
