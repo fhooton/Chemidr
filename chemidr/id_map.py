@@ -8,45 +8,34 @@ import json
 from lxml import etree
 
 
-def cids2inchis(cids, as_dict=False, use_prefix=False, keys = True):
+def cids2props(cids, prop, as_dict=False):
 	"""
-        Retrieves InChIKeys from PubChem using Pubchem CIDS
+	    Retrieves properties from PubChem using Pubchem CIDS
+	    See property section of https://pubchemdocs.ncbi.nlm.nih.gov/pug-rest$_Toc494865567
 
-        Input
-        ----------------------------------------------------------------
-        cids : list
-            list of pubchem cid's for InChIKeys (needs to be ints, but also included int typecast)
-        as_dict : bool (default False)
-            returns dictionary of info if true, list otherwise
-       	use_prefix : bool (default False)
-       		only return the prefix of inchikeys (before the first -), which contains the structural information
-       		(to find out more see https://www.inchi-trust.org/technical-faq-2/)
-       	keys : bool (default True)
-       		return inchikeys rather than the full inchi code
+	    Input
+	    ----------------------------------------------------------------
+	    cids : list
+	        list of pubchem cid's for properties (needs to be ints, but also included int typecast)
+	    as_dict : bool (default False)
+	        returns dictionary of info if true, list otherwise
 
-        Returns
-        ----------------------------------------------------------------
-        inchikeys : dict or list
-            dictionary with CID's as keys and InChIKeys as values if as_dict is True, otherwise list
-            of InChIKeys to preserve order
-    """
+	    Returns
+	    ----------------------------------------------------------------
+	    props : dict or list
+	        dictionary with CID's as keys and properties as values if as_dict is True, otherwise list
+	        of properties to preserve order
+	"""
 	cids = __divide_list__([str(int(i)) for i in cids])
 
-	if as_dict: inchikeys = {}
-	else: inchikeys = []
+	if as_dict: props = {}
+	else: props = []
 
 	# Loop over divisions of ids to avoid overloading query
 	for ids in cids:
 
-		if keys:
-			# Create url for InChIKey query
-			query_type = 'InChIKey'
-		else:
-			# Create url for InChI quer
-			query_type = 'InChI'
-
 		# Create url for InChI query
-		url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{','.join(ids)}/property/{query_type}/JSON"
+		url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{','.join(ids)}/property/{prop}/JSON"
 
 		r = __safe_urlopen__(url)
 
@@ -54,15 +43,47 @@ def cids2inchis(cids, as_dict=False, use_prefix=False, keys = True):
 		# retrieved, list preserves order)
 		if as_dict:
 			new_dict = {
-				p['CID'] : p[query_type] for p in json.loads(r)['PropertyTable']['Properties']
+				p['CID'] : __safe_object_access__(p, prop) for p in json.loads(r)['PropertyTable']['Properties']
 			}
-			inchikeys.update(new_dict)
+			props.update(new_dict)
 
 		else:
 			new_list = [
-				p[query_type] for p in json.loads(r)['PropertyTable']['Properties']
+				__safe_object_access__(p, prop) for p in json.loads(r)['PropertyTable']['Properties']
 			]
-			inchikeys += new_list
+			props += new_list
+
+	return props
+
+
+def cids2inchis(cids, as_dict=False, use_prefix=False, keys = True):
+	"""
+	    Retrieves InChIKeys from PubChem using Pubchem CIDS
+
+	    Input
+	    ----------------------------------------------------------------
+	    cids : list
+	        list of pubchem cid's for InChIKeys (needs to be ints, but also included int typecast)
+	   	use_prefix : bool (default False)
+	   		only return the prefix of inchikeys (before the first -), which contains the structural information
+	   		(to find out more see https://www.inchi-trust.org/technical-faq-2/)
+	   	keys : bool (default True)
+	   		return inchikeys rather than the full inchi code
+
+	    Returns
+	    ----------------------------------------------------------------
+	    inchikeys : dict or list
+	        dictionary with CID's as keys and InChIKeys as values if as_dict is True, otherwise list
+	        of InChIKeys to preserve order
+	"""
+	if keys:
+		# Create url for InChIKey query
+		query_type = 'InChIKey'
+	else:
+		# Create url for InChI quer
+		query_type = 'InChI'
+	
+	inchikeys = cids2props(cids, query_type, as_dict=as_dict)
 
 	if use_prefix:
 		if isinstance(inchikeys, dict): inchikeys = {cid : ikey.split('-')[0] for cid, ikey in inchikeys.items()}
@@ -79,34 +100,15 @@ def __safe_object_access__(obj, key):
 
 
 def cids2upacs(cids, as_dict=False):
-	cids = __divide_list__([str(int(i)) for i in cids])
-
-	if as_dict: upacs = {}
-	else: upacs = []
-
-	# Loop over divisions of ids to avoid overloading query
-	for ids in cids:
-
-		# Create url for InChI query
-		url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{','.join(ids)}/property/IUPACName/JSON"
-
-		r = __safe_urlopen__(url)
-
-		# option to return InChIKey's as list or as dict (dict has certainty in case some cids aren't
-		# retrieved, list preserves order)
-		if as_dict:
-			new_dict = {
-				p['CID'] : __safe_object_access__(p, 'IUPACName') for p in json.loads(r)['PropertyTable']['Properties']
-			}
-			upacs.update(new_dict)
-
-		else:
-			new_list = [
-				__safe_object_access__(p, 'IUPACName') for p in json.loads(r)['PropertyTable']['Properties']
-			]
-			upacs += new_list
+	upacs = cids2props(cids, 'IUPACName', as_dict=as_dict)
 
 	return upacs
+
+
+def cids2smiles(cids, as_dict=False):
+	SMILES = cids2props(cids, 'CanonicalSMILES', as_dict=as_dict)
+	return SMILES
+
 
 # Divides list into even divisions with a maximum of 100 elements
 def __divide_list__(ids):
@@ -152,6 +154,7 @@ def __safe_urlopen__(url):
         return None
 
 
+### Antiquated and might be removed in future
 def cid2smile(cid):
     """
         Retrieves a chemical SMILE from Pubchem using a cid
@@ -171,7 +174,7 @@ def cid2smile(cid):
     xml = __safe_urlopen__(url)
 
     if xml is None:
-    	return np.nan
+        return np.nan
     
     root = etree.fromstring(xml)
     SMILE = root.findall(".//{http://pubchem.ncbi.nlm.nih.gov/pug_rest}CanonicalSMILES")[0].xpath('.//text()')[0]
