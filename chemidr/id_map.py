@@ -8,7 +8,7 @@ import json
 from lxml import etree
 
 
-def cids2inchikeys(cids, as_dict=False, use_prefix=False):
+def cids2inchis(cids, as_dict=False, use_prefix=False, keys = True):
 	"""
         Retrieves InChIKeys from PubChem using Pubchem CIDS
 
@@ -21,6 +21,8 @@ def cids2inchikeys(cids, as_dict=False, use_prefix=False):
        	use_prefix : bool (default False)
        		only return the prefix of inchikeys (before the first -), which contains the structural information
        		(to find out more see https://www.inchi-trust.org/technical-faq-2/)
+       	keys : bool (default True)
+       		return inchikeys rather than the full inchi code
 
         Returns
         ----------------------------------------------------------------
@@ -36,23 +38,29 @@ def cids2inchikeys(cids, as_dict=False, use_prefix=False):
 	# Loop over divisions of ids to avoid overloading query
 	for ids in cids:
 
-		# Create url for InChIKey query
-		url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{','.join(ids)}/property/InChIKey/JSON"
+		if keys:
+			# Create url for InChIKey query
+			query_type = 'InChIKey'
+		else:
+			# Create url for InChI quer
+			query_type = 'InChI'
 
-		
+		# Create url for InChI query
+		url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{','.join(ids)}/property/{query_type}/JSON"
+
 		r = __safe_urlopen__(url)
 
 		# option to return InChIKey's as list or as dict (dict has certainty in case some cids aren't
 		# retrieved, list preserves order)
 		if as_dict:
 			new_dict = {
-				p['CID'] : p['InChIKey'] for p in json.loads(r)['PropertyTable']['Properties']
+				p['CID'] : p[query_type] for p in json.loads(r)['PropertyTable']['Properties']
 			}
 			inchikeys.update(new_dict)
 
 		else:
 			new_list = [
-				p['InChIKey'] for p in json.loads(r)['PropertyTable']['Properties']
+				p[query_type] for p in json.loads(r)['PropertyTable']['Properties']
 			]
 			inchikeys += new_list
 
@@ -62,6 +70,43 @@ def cids2inchikeys(cids, as_dict=False, use_prefix=False):
 
 	return inchikeys
 
+
+def __safe_object_access__(obj, key):
+	if key in obj:
+		return obj[key]
+	else:
+		return np.nan
+
+
+def cids2upacs(cids, as_dict=False):
+	cids = __divide_list__([str(int(i)) for i in cids])
+
+	if as_dict: upacs = {}
+	else: upacs = []
+
+	# Loop over divisions of ids to avoid overloading query
+	for ids in cids:
+
+		# Create url for InChI query
+		url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{','.join(ids)}/property/IUPACName/JSON"
+
+		r = __safe_urlopen__(url)
+
+		# option to return InChIKey's as list or as dict (dict has certainty in case some cids aren't
+		# retrieved, list preserves order)
+		if as_dict:
+			new_dict = {
+				p['CID'] : __safe_object_access__(p, 'IUPACName') for p in json.loads(r)['PropertyTable']['Properties']
+			}
+			upacs.update(new_dict)
+
+		else:
+			new_list = [
+				__safe_object_access__(p, 'IUPACName') for p in json.loads(r)['PropertyTable']['Properties']
+			]
+			upacs += new_list
+
+	return upacs
 
 # Divides list into even divisions with a maximum of 100 elements
 def __divide_list__(ids):
@@ -74,6 +119,20 @@ def __divide_list__(ids):
 
 
 def __safe_urlopen__(url):
+    """
+        Retrieves information from url query without throwing errors, such as for values that do not
+        exist or excessive querying. Designed for Pubchem and Pubmed apis
+
+        Input
+        ----------------------------------------------------------------
+        url : str
+            url to query
+
+        Returns
+        ----------------------------------------------------------------
+        response.content : str (maybe bytes) or None
+            Returns the response of a url query if it exists, else None
+    """
     response = requests.get(url)
 
     if response.status_code == 200: # Successful
@@ -93,7 +152,47 @@ def __safe_urlopen__(url):
         return None
 
 
+def cid2smile(cid):
+    """
+        Retrieves a chemical SMILE from Pubchem using a cid
+
+        Input
+        ----------------------------------------------------------------
+        cid : str
+            cid for which to retrieve the chemical SMILE
+
+        Returns
+        ----------------------------------------------------------------
+        SMILE : str or None
+            Returns the chemical SMILE corresponding to the cid if it exists, else None
+    """
+    url = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/" + cid + "/property/CanonicalSMILES/XML"
+    
+    xml = __safe_urlopen__(url)
+
+    if xml is None:
+    	return np.nan
+    
+    root = etree.fromstring(xml)
+    SMILE = root.findall(".//{http://pubchem.ncbi.nlm.nih.gov/pug_rest}CanonicalSMILES")[0].xpath('.//text()')[0]
+    
+    return SMILE
+
+
 def mesh2pid(mesh):
+	"""
+	    Retrieves pubchem id's (both cid and sid) from Pubchem by searching the substances
+
+	    Input
+	    ----------------------------------------------------------------
+	    mesh : str
+	        mesh for which to retrieve the Pubchem id's
+
+	    Returns
+	    ----------------------------------------------------------------
+	    _ : dict (of dicts)
+	        dictionary with mesh id as keys, and dictionaries of mesh ids with corresponding cids and sids as values
+	"""
 	url = f'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pcsubstance&term={mesh}&retmode=json'
 
 	r = __safe_urlopen__(url)
@@ -101,6 +200,7 @@ def mesh2pid(mesh):
 	if r is not None:
 		j = json.loads(r)
 
+		# No results from searching mesh id
 		if j['esearchresult']['count'] != 0:
 
 			sid = j['esearchresult']['idlist'][0] # get first sid result
@@ -109,21 +209,17 @@ def mesh2pid(mesh):
 
 			xml = __safe_urlopen__(url)
 
-			try:
-				root = etree.fromstring(xml)
+			if xml is None:
+				return {mesh : {'mesh' : mesh, 'sid' : sid, 'cid' : cid}}
 
-			except:
-				print(sid)
-				print(type(xml))
-				print(xml)
-				return
+			root = etree.fromstring(xml)
 
 			cids = root.findall(".//{http://www.ncbi.nlm.nih.gov}PC-CompoundType_id_cid")
 
 			if len(cids) > 0:
 				cid = cids[0].xpath('./text()')[0]
 			else:
-				cid = np.nan
+				cid = np.nan # No cids
 
 			return {mesh : {'mesh' : mesh, 'sid' : sid, 'cid' : cid}}
 

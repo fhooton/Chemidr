@@ -25,7 +25,7 @@ import pickle
 import re
 from fuzzywuzzy import fuzz
 
-from .id_map import cids2inchikeys
+from .id_map import cids2inchis
 
 import os
 cwd = os.path.dirname(__file__) # get current location of script
@@ -35,6 +35,7 @@ package_path = 'Chemidr'.join(cwd.split('Chemidr')[:-1]) + 'Chemidr' # get path 
 # Filepath wrapper to make data load-able from Chemidr
 def __make_fp__(fp):
     return f'{package_path}/{fp}'
+    
 
 # Convert text to greet letter using *~greek letter name~*
 def __greek_letter_converter__(chem, convert_letter = True):
@@ -90,6 +91,20 @@ def __clean_term__(term, convert_letter = True, w_space = True, is_url=True):
 
 
 def __safe_urlopen__(url):
+    """
+        Retrieves information from url query without throwing errors, such as for values that do not
+        exist or excessive querying. Designed for Pubchem and Pubmed apis
+
+        Input
+        ----------------------------------------------------------------
+        url : str
+            url to query
+
+        Returns
+        ----------------------------------------------------------------
+        response.content : str (maybe bytes) or None
+            Returns the response of a url query if it exists, else None
+    """
     response = requests.get(url)
 
     if response.status_code == 200: # Successful
@@ -100,8 +115,14 @@ def __safe_urlopen__(url):
         time.sleep(.5)
         return __safe_urlopen__(url)
 
+    elif response.status_code == 503: # PUGREST.ServerBusy
+        # print('Retrying...')
+        time.sleep(1)
+        return __safe_urlopen__(url)
+
     elif response.status_code == 404: # PUGREST.NotFound (aka doesn't exist)
         return None
+
 
 def __exact_retrevial__(req):
     """
@@ -169,6 +190,7 @@ def __clean_compound_name__(s):
     s = s.strip()
 
     return s
+
 
 def __complex_string_equivalence__(s1, s2):
     # Remove parenthesis and anything in between
@@ -482,7 +504,7 @@ def id_searcher(df, chem_key, fdb = True, pubchem = True, use_prefix=True):
     # num_covered = len(df[df.foodb_id.notnull()].foodb_id.drop_duplicates())
     # print('FooDB unique compound coverage', num_covered / total, '%')
 
-    df.at[df[df.pubchem_id.notnull()].index, 'inchikey'] = cids2inchikeys(df[df.pubchem_id.notnull()].pubchem_id.tolist(), use_prefix=use_prefix)
+    df.at[df[df.pubchem_id.notnull()].index, 'inchikey'] = cids2inchis(df[df.pubchem_id.notnull()].pubchem_id.tolist(), use_prefix=use_prefix)
     
     df = __darkmatter_database__(df, chem_key)
 
