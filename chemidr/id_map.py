@@ -8,6 +8,20 @@ import json
 from lxml import etree
 
 
+def cid2prop(cid, prop):
+	# Create url for InChI query
+	url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{str(int(cid))}/property/{prop}/JSON"
+
+	r = __safe_urlopen__(url)
+
+	if r is None:
+		return np.nan
+	
+	prop_value = __safe_object_access__(json.loads(r)['PropertyTable']['Properties'][0], prop)
+	
+	return prop_value
+
+
 def cids2props(cids, prop, as_dict=False):
 	"""
 	    Retrieves properties from PubChem using Pubchem CIDS
@@ -39,6 +53,14 @@ def cids2props(cids, prop, as_dict=False):
 
 		r = __safe_urlopen__(url)
 
+		if r is None:
+			new_props = batch_error_handler(ids, prop, as_dict=as_dict)
+
+			if as_dict: props.update(new_props)
+			else: props += new_props
+
+			continue
+
 		# option to return InChIKey's as list or as dict (dict has certainty in case some cids aren't
 		# retrieved, list preserves order)
 		if as_dict:
@@ -53,6 +75,75 @@ def cids2props(cids, prop, as_dict=False):
 			]
 			props += new_list
 
+	return props
+
+
+def cids2names(cids, as_dict=False):
+	"""
+	    Retrieves properties from PubChem using Pubchem CIDS
+	    See property section of https://pubchemdocs.ncbi.nlm.nih.gov/pug-rest$_Toc494865567
+
+	    Input
+	    ----------------------------------------------------------------
+	    cids : list
+	        list of pubchem cid's for properties (needs to be ints, but also included int typecast)
+	    as_dict : bool (default False)
+	        returns dictionary of info if true, list otherwise
+
+	    Returns
+	    ----------------------------------------------------------------
+	    names : dict or list
+	        dictionary with CID's as keys and chemical names as values if as_dict is True, otherwise list
+	        of chemical names to preserve order
+	"""
+	cids = __divide_list__([str(int(i)) for i in cids])
+
+	if as_dict: names = {}
+	else: names = []
+
+	# Loop over divisions of ids to avoid overloading query
+	for ids in cids:
+
+		# Create url for InChI query
+		url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{','.join(ids)}/synonyms/JSON"
+
+		r = __safe_urlopen__(url)
+
+		# if r is None:
+		# 	new_names = batch_error_handler(ids, prop, as_dict=as_dict)
+
+		# 	if as_dict: names.update(new_names)
+		# 	else: names += new_names
+
+		# 	continue
+
+		# option to return InChIKey's as list or as dict (dict has certainty in case some cids aren't
+		# retrieved, list preserves order)
+		if as_dict:
+			new_dict = {
+				p['CID'] : __safe_object_access__(p, 'Synonym') for p in json.loads(r)['InformationList']['Information']
+			}
+			names.update(new_dict)
+
+		else:
+			new_list = [
+				__safe_object_access__(p, 'Synonym') for p in json.loads(r)['InformationList']['Information']
+			]
+			names += new_list
+
+	return names
+
+
+def batch_error_handler(cids, prop, as_dict=False):
+	if as_dict: props = {}
+	else: props = []
+
+	for cid in cids:
+		val = cid2prop(cid, prop)
+		
+		if as_dict: props.update({cid : val})
+		else: props += [val]
+	
 	return props
 
 
@@ -135,7 +226,11 @@ def __safe_urlopen__(url):
         response.content : str (maybe bytes) or None
             Returns the response of a url query if it exists, else None
     """
-    response = requests.get(url)
+    try:
+        response = requests.get(url)
+    except TimeoutError:
+        time.sleep(.5)
+        return __safe_urlopen__(url)
 
     if response.status_code == 200: # Successful
         return response.content
@@ -257,3 +352,39 @@ def mesh2pid(mesh):
 	# 			cid = np.nan
 
 	# 		return {'mesh' : mesh, 'sid' : sid, 'cid' : cid}
+
+
+def cid2tax(cid, taxonomy='ChEBI'):
+	url = f'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cid}/classification/JSON'
+
+	r = __safe_urlopen__(url)
+
+	if r is None: return np.nan
+
+	all_taxonomies = json.loads(r)['Hierarchies']['Hierarchy']
+
+	# I think should only have one occurance of taxonomy source name
+	raw_tax = [all_taxonomies[t] for t in range(len(all_taxonomies)) if all_taxonomies[t]['SourceName'] == taxonomy]
+
+	if len(raw_tax) == 0: return np.nan
+	else: raw_tax = raw_tax[0]
+
+	nodes = raw_tax['Node']
+	tax = []
+
+	chebi_name = lambda x: x['Information']['Name']
+	chebi_id = lambda x: int(x['Information']['URL'].lstrip('http://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:'))
+
+	last_node = nodes[0]['NodeID']
+	tax.append( (chebi_name(nodes[0]), chebi_id(nodes[0])) )
+	n=1
+
+	while int(last_node.lstrip('node_')) >= int(nodes[n]['NodeID'].lstrip('node_')):
+		tax.append( (chebi_name(nodes[n]), chebi_id(nodes[n])) )
+		last_node = nodes[n]['NodeID']
+		n += 1
+
+		if n == len(nodes):
+			break
+
+	return tax

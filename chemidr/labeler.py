@@ -158,7 +158,7 @@ def __exact_retrevial__(req):
 
 
 def __is_nutrient__(term):
-    general_terms = ['protein', 'fat', 'sugar', 'carbohydrate', 'fiber']
+    general_terms = ['protein', 'fat', 'sugar', 'carbohydrate', 'fiber', 'ash']
     
     if sum([1 for t in general_terms if t in term]) > 0:
         return True
@@ -269,7 +269,7 @@ def __compound_search__(req):
 # try-except wrapper to retrieve pubchem info
 def get_compound_pubchem_info(chem):
     if __is_nutrient__(chem):
-        return np.nan, chem
+        return np.nan, np.nan
         
     # try:
     req = __clean_term__(chem, convert_letter=False)
@@ -412,6 +412,12 @@ def append_pubchem_id(df, chem_key):
             input dataframe with a pubchem_id column
     """
     start = time.time()
+
+    df['pubchem_id'] = np.nan
+    df['pubchem_name'] = np.nan
+
+    df['pubchem_id'] = df['pubchem_id'].astype(object)
+    df['pubchem_name'] = df['pubchem_name'].astype(object)
 
     i = 0
     for idx, row in df.iterrows():
